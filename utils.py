@@ -43,7 +43,7 @@ def save_dial_to_json(prompts, replies, comment, root):
 
     for prompt, reply in zip(prompts, replies):
         dialogues[len(dialogues)]['prompt'] = prompt
-        dialogues[len(dialogues)]['reply'] = reply
+        dialogues[len(dialogues)-1]['reply'] = reply
 
     if not os.path.exists(root):
         os.mkdir(root)

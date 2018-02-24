@@ -16,8 +16,8 @@ def inference(model, train_dataset, n=10):
     random_questions = np.zeros((n, args.max_utterance_length)).astype('int64')
     random_questions_length = np.zeros(n)
     for i, rqi in enumerate(random_question_idx):
-        random_questions[i] = train_dataset[i]['question']
-        random_questions_length[i] = train_dataset[i]['question_length']
+        random_questions[i] = train_dataset[rqi]['question']
+        random_questions_length[i] = train_dataset[rqi]['question_length']
 
     input_sequence = to_var(torch.from_numpy(random_questions))
     input_length = to_var(torch.from_numpy(random_questions_length))
@@ -71,11 +71,11 @@ def main(args):
 
         return nll_loss, kl_weighted, kl_weight, kl_loss
 
+    ts = time.time()
     if args.tensorboard_logging:
-        writer = SummaryWriter("logs/"+str(time.time()))
-
-        writer.add_text("model", model)
-        writer.add_text("args", args)
+        writer = SummaryWriter("logs/"+str(ts))
+        writer.add_text("model", str(model))
+        writer.add_text("args", str(args))
 
     global_step = 0
     for epoch in range(args.epochs):
@@ -138,7 +138,7 @@ def main(args):
                         %(split.upper(), iteration, len(data_loader), loss.data[0], nll_loss.data[0], kl_loss.data[0], kl_weighted_loss.data[0], kl_weight))
 
                     prompts, replies = inference(model, datasets['train'])
-                    save_dial_to_json(prompts, replies, root="dials", comment="E"+str(epoch) + "I"+str(iteration))
+                    save_dial_to_json(prompts, replies, root="dials", comment=str(ts)+"E"+str(epoch) + "I"+str(iteration))
 
             print("%s Epoch %02d/%i, Mean Loss: %.4f"%(split.upper(), epoch, args.epochs, torch.mean(tracker['loss'])))
 
