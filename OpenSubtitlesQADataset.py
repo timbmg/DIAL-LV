@@ -57,7 +57,8 @@ class OpenSubtitlesQADataset(Dataset):
         return {
             'question':         self.dataset['question'][idx].astype('int64'),
             'question_length':  self.dataset['question_length'][idx].astype('int64'),
-            'answer':           self.dataset['answer'][idx].astype('int64'),
+            'answer_input':     self.dataset['answer_input'][idx].astype('int64'),
+            'answer_target':    self.dataset['answer_target'][idx].astype('int64'),
             'answer_length':    self.dataset['answer_length'][idx].astype('int64')
         }
 
@@ -128,15 +129,17 @@ class OpenSubtitlesQADataset(Dataset):
                 # cut off
                 question_idx = question_idx[:self.max_utterance_length]
                 answer_idx = answer_idx[:self.max_utterance_length-2]
-                answer_idx = [self.sos_idx] + answer_idx + [self.eos_idx]
+                answer_idx_input = [self.sos_idx] + answer_idx
+                answer_idx_target = answer_idx + [self.eos_idx]
 
                 # save length before pad
                 dataset[id]['question_length'] = len(question_idx)
-                dataset[id]['answer_length'] = len(answer_idx)
+                dataset[id]['answer_length'] = len(answer_idx_input)
 
                 # pad
                 dataset[id]['question'] = question_idx + [self.w2i['<pad>']] * (self.max_utterance_length - dataset[id]['question_length'])
-                dataset[id]['answer'] = answer_idx + [self.w2i['<pad>']] * (self.max_utterance_length - dataset[id]['answer_length'])
+                dataset[id]['answer_input'] = answer_idx_input + [self.w2i['<pad>']] * (self.max_utterance_length - dataset[id]['answer_length'])
+                dataset[id]['answer_target'] = answer_idx_target + [self.w2i['<pad>']] * (self.max_utterance_length - dataset[id]['answer_length'])
                 id += 1
 
                 if (id % save_every == 0 and id > 0) or (i+1 == num_lines):
@@ -187,7 +190,7 @@ class OpenSubtitlesQADataset(Dataset):
                 question = tokenizer.tokenize(question)
                 question = question[:self.max_utterance_length]
                 answer = tokenizer.tokenize(answer)
-                answer = answer[:self.max_utterance_length-2] # sos and eos token will be added
+                answer = answer[:self.max_utterance_length-1] # sos or eos token will be added
                 words = question + answer
                 w2c.update(question+answer)
 
@@ -225,7 +228,8 @@ class OpenSubtitlesQADataset(Dataset):
             # create hdf5 file
             file = h5py.File(self.preprocessed_file_path, 'w')
             file.create_dataset('question', (0, self.max_utterance_length), maxshape=(None, self.max_utterance_length), dtype='i')
-            file.create_dataset('answer', (0, self.max_utterance_length), maxshape=(None, self.max_utterance_length), dtype='i')
+            file.create_dataset('answer_input', (0, self.max_utterance_length), maxshape=(None, self.max_utterance_length), dtype='i')
+            file.create_dataset('answer_target', (0, self.max_utterance_length), maxshape=(None, self.max_utterance_length), dtype='i')
             file.create_dataset('question_length', (0, ), maxshape=(None,), dtype='i')
             file.create_dataset('answer_length', (0, ), maxshape=(None,), dtype='i')
 
@@ -246,7 +250,7 @@ class OpenSubtitlesQADataset(Dataset):
                 # expand
                 current_num_entries = h5py_dataset.shape[0]
                 new_num_entries = len(value)
-                if key in ['question', 'answer']:
+                if key in ['question', 'answer_input', 'answer_target']:
                     h5py_dataset.resize((current_num_entries+new_num_entries, self.max_utterance_length))
                 elif key in ['question_length', 'answer_length']:
                     h5py_dataset.resize((current_num_entries+new_num_entries, ))

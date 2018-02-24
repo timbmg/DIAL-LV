@@ -150,20 +150,21 @@ def main(args):
 
                 question = batch['question']
                 question_length = batch['question_length']
-                answer = batch['answer']
+                answer_input = batch['answer_input']
+                answer_target = batch['answer_target']
                 answer_length = batch['answer_length']
 
                 # model forward pass
                 predictions, mean, log_var = model(
                     prompt_sequece=question,
                     prompt_length=question_length,
-                    reply_sequence=answer,
+                    reply_sequence=answer_input,
                     reply_length=answer_length
                     )
 
                 # predictions come back packed, so making targets packed as well to ignore all padding tokens
                 sorted_length, sort_idx = answer_length.sort(0, descending=True)
-                targets = answer[sort_idx]
+                targets = answer_target[sort_idx]
                 targets = pack_padded_sequence(targets, sorted_length.data.tolist(), batch_first=True)[0]
 
                 # compute the loss
@@ -191,11 +192,11 @@ def main(args):
                     writer.add_scalar("%s/Batch-KL-Loss-Weighted"%(split), kl_weighted_loss.data[0], epoch * len(data_loader) + iteration)
 
                 if iteration % args.print_every == 0 or iteration+1 == len(data_loader):
-                    print("%s Batch %04d/%i, Loss %9.4f, NLL Loss %9.4f, KL Loss %9.4f, KL_w Loss %6.4f, w %.4f"
+                    print("%s Batch %04d/%i, Loss %9.4f, NLL Loss %9.4f, KL Loss %9.4f, KLW Loss %9.4f, w %6.4f"
                         %(split.upper(), iteration, len(data_loader), loss.data[0], nll_loss.data[0], kl_loss.data[0], kl_weighted_loss.data[0], kl_weight))
 
                     prompts, replies = inference(model, datasets['train'])
-                    save_dial_to_json(prompts, replies, root="dials", comment=str(ts)+"E"+str(epoch) + "I"+str(iteration))
+                    save_dial_to_json(prompts, replies, root="dials/"+str(ts)+"/", comment="E"+str(epoch) + "I"+str(iteration))
 
             print("%s Epoch %02d/%i, Mean Loss: %.4f"%(split.upper(), epoch, args.epochs, torch.mean(tracker['loss'])))
 
