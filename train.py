@@ -42,9 +42,9 @@ def main(args):
             )
 
     model = DialLV(vocab_size=datasets['train'].vocab_size,
-                    embedding_size=300,
-                    hidden_size=256,
-                    latent_size=64,
+                    embedding_size=args.embedding_size,
+                    hidden_size=args.hidden_size,
+                    latent_size=args.latent_size,
                     pad_idx=datasets['train'].pad_idx,
                     sos_idx=datasets['train'].sos_idx,
                     eos_idx=datasets['train'].eos_idx,
@@ -73,6 +73,9 @@ def main(args):
 
     if args.tensorboard_logging:
         writer = SummaryWriter("logs/"+str(time.time()))
+
+        writer.add_text("model", model)
+        writer.add_text("args", args)
 
     global_step = 0
     for epoch in range(args.epochs):
@@ -151,12 +154,14 @@ if __name__ == '__main__':
     parser.add_argument("--max_utterance_length", type=int, default=30)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--learning_rate", type=float, default=0.0005)
+    parser.add_argument("--embedding_size", type=int, default=300)
+    parser.add_argument("--hidden_size", type=int, default=512)
+    parser.add_argument("--latent_size", type=int, default=64)
     parser.add_argument("--kl_anneal_k", type=float, default=0.00025, help="Steepness of Annealing function")
     parser.add_argument("--kl_anneal_x0", type=int, default=15000, help="Midpoint of Annealing function (i.e. weight=0.5)")
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--print_every", type=int, default=100)
     parser.add_argument("--tensorboard_logging", action='store_true')
-
 
     args = parser.parse_args()
 
