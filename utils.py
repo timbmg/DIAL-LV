@@ -41,9 +41,7 @@ def idx2word(idx, i2w):
     words = str()
 
     for sent in idx:
-
         for id in sent:
-
             words += i2w[str(id)] + " "
 
         words += "\n"
@@ -57,7 +55,7 @@ def save_dial_to_json(prompts, replies, comment, root):
     ----------
     prompts : string
         String of prompts, seperated by `\n`.
-    replies : string
+    replies : list(string)
         String of replies, seperated by `\n`.
     comment : string
         This string will be prepended to the json.
@@ -69,11 +67,12 @@ def save_dial_to_json(prompts, replies, comment, root):
     dialogues = defaultdict(dict)
 
     prompts = prompts.split("\n")
-    replies = replies.split("\n")
-
-    for prompt, reply in zip(prompts, replies):
-        dialogues[len(dialogues)]['prompt'] = prompt
-        dialogues[len(dialogues)-1]['reply'] = reply
+    for pi, prompt in enumerate(prompts):
+        id = len(dialogues)
+        dialogues[id]['prompt'] = prompt
+        for ri, reply in enumerate(replies):
+            reply = reply.split("\n")[pi]
+            dialogues[id]['reply'+str(ri)] = reply
 
     if not os.path.exists(root):
         os.mkdir(root)

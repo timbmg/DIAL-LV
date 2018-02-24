@@ -83,7 +83,7 @@ def main(args):
 
         return nll_loss, kl_weighted, kl_weight, kl_loss
 
-    def inference(model, train_dataset, n=10):
+    def inference(model, train_dataset, n=10, m=3):
         """ Executes the model in inference mode and returns string of inputs and corresponding
         generations.
 
@@ -93,8 +93,10 @@ def main(args):
             The DIAL-LV model.
         train_dataset : type
             Training dataset to draw random input samples from.
-        n : type
-            Number of samples to draw and generated responses.
+        n : int
+            Number of samples to draw.
+        m : int
+            Number of response generations.
 
         Returns
         -------
@@ -115,8 +117,10 @@ def main(args):
         input_length = to_var(torch.from_numpy(random_questions_length))
         prompts = idx2word(input_sequence.data, train_dataset.i2w)
 
-        replies = model.inference(input_sequence, input_length)
-        replies = idx2word(replies, train_dataset.i2w)
+        replies = list()
+        for i in range(m):
+            replies_ = model.inference(input_sequence, input_length)
+            replies.append(idx2word(replies_, train_dataset.i2w))
 
         return prompts, replies
 
