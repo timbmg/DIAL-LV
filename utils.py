@@ -21,6 +21,22 @@ def to_var(x, volatile=False):
     return Variable(x, volatile=volatile)
 
 def idx2word(idx, i2w):
+    """Maps given indicies `idx` to words.
+
+    Parameters
+    ----------
+    idx : torch.LongTensor (or any other two iterable wrapping an iterable)
+        Word indicies.
+    i2w : dict
+        Dictionary mapping indicies to words.
+
+    Returns
+    -------
+    string
+        A single string containing the words encoded by the given indicies. The individual
+        sequences are seperated by `\n`.
+
+    """
 
     words = str()
 
@@ -35,6 +51,20 @@ def idx2word(idx, i2w):
     return words
 
 def save_dial_to_json(prompts, replies, comment, root):
+    """Saves the prompts and replies string to a json file.
+
+    Parameters
+    ----------
+    prompts : string
+        String of prompts, seperated by `\n`.
+    replies : string
+        String of replies, seperated by `\n`.
+    comment : string
+        This string will be prepended to the json.
+    root : string
+        Directory of output file. If it does not exist, it will be created.
+
+    """
 
     dialogues = defaultdict(dict)
 

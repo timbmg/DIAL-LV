@@ -145,6 +145,22 @@ class Decoder(nn.Module):
         return log_probs
 
     def inference(self, hx, z):
+        """Inference mode of Decoder, no gold reply is provided, therefore sample token at t-1 will
+        be input to current timestep.
+
+        Parameters
+        ----------
+        hx : Variable(torch.FloatTensor)
+            Hidden state of Prompt encoder.
+        z : Variable(torch.FloatTensor)
+            Sampled latent variable from standard Gaussian.
+
+        Returns
+        -------
+        Variable(torch.LongTensor)
+            Generated sequence.
+
+        """
 
         hidden = torch.cat((hx, z), dim=-1)
         hidden = hidden.unsqueeze(0)
@@ -191,6 +207,19 @@ class Decoder(nn.Module):
         return samples
 
     def _sample(self, predictions):
+        """Samples from predictions distribution.
+
+        Parameters
+        ----------
+        predictions : torch.Tensor or Variable(torch.Tensor)
+            Two dimenionsal tensor where last dimension is distribution.
+
+        Returns
+        -------
+        torch.LongTensor or Variable(torch.LongTensor)
+            One dimensional tensor with idx according to sample
+
+        """
 
         if self.sample_mode == 'greedy':
             _, sample = torch.topk(predictions, 1, dim=-1)
@@ -205,7 +234,26 @@ class Decoder(nn.Module):
         return sample
 
     def _save_sample(self, save_to, sample, running, t):
+        """Saves a sample into a `save_to` at current timestep (t), given the sequences which are
+        still generating (running).
 
+        Parameters
+        ----------
+        save_to : torch.LongTensor
+            Tensor of size [batch x sequence]; holds all previous samples.
+        sample : torch.LongTensor
+            Tensor of size [batch]; holds samples from current timestep.
+        running : torch.LongTensor
+            Tensor containing the idicies of still running sequences.
+        t : int
+            Current timestep.
+
+        Returns
+        -------
+        torch.LongTensor
+            Updated `save_to` Tensor, with sample inserted at current timestep.
+
+        """
         # select only still running
         running_latest = save_to[running]
         # update token at position t

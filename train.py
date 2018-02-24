@@ -11,23 +11,6 @@ from model import DialLV
 from utils import to_var, idx2word, save_dial_to_json
 from OpenSubtitlesQADataset import OpenSubtitlesQADataset
 
-def inference(model, train_dataset, n=10):
-    random_question_idx = np.random.choice(np.arange(0, len(train_dataset)), 10, replace=False).astype('int64')
-    random_questions = np.zeros((n, args.max_utterance_length)).astype('int64')
-    random_questions_length = np.zeros(n)
-    for i, rqi in enumerate(random_question_idx):
-        random_questions[i] = train_dataset[rqi]['question']
-        random_questions_length[i] = train_dataset[rqi]['question_length']
-
-    input_sequence = to_var(torch.from_numpy(random_questions))
-    input_length = to_var(torch.from_numpy(random_questions_length))
-    prompts = idx2word(input_sequence.data, train_dataset.i2w)
-
-    replies = model.inference(input_sequence, input_length)
-    replies = idx2word(replies, train_dataset.i2w)
-
-    return prompts, replies
-
 def main(args):
 
     splits = ['train', 'valid']
@@ -54,13 +37,41 @@ def main(args):
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
 
-    NLL = torch.nn.NLLLoss(ignore_index=datasets['train'].pad_idx, size_average=False)
+    NLL = torch.nn.NLLLoss(size_average=False)
 
     def kl_anneal_function(k, x0, x):
-        # https://en.wikipedia.org/wiki/Logistic_function
+        """ Returns the weight of for calcualting the weighted KL Divergence.
+        https://en.wikipedia.org/wiki/Logistic_function
+        """
         return float(1/(1+np.exp(-k*(x-x0))))
 
     def loss_fn(predictions, targets, mean, log_var, k, x0, x):
+        """Calcultes the ELBO, consiting of the Negative Log Likelihood and KL Divergence.
+
+        Parameters
+        ----------
+        predictions : Variable(torch.FloatTensor) [? x vocab_size]
+            Log probabilites of each generated token in the batch. Number of tokens depends on
+            tokens in batch.
+        targets : Variable(torch.LongTensor) [?]
+            Target token ids. Number of tokens depends on tokens in batch.
+        mean : Variable(torch.FloatTensor) [batch_size x latent_size]
+            Predicted mean values of latent variables.
+        log_var : Variable(torch.FloatTensor) [batch_size x latent_size]
+            Predicted log variabnce values of latent variables.
+        k : type
+            Steepness parameter for kl weight calculation.
+        x0 : type
+            Midpoint parameter for kl weight calculation.
+        x : int
+            Global step.
+
+        Returns
+        -------
+        Variable(torch.FloatTensor), Variable(torch.FloatTensor), float, Variable(torch.FloatTensor)
+            NLLLoss value, weighted KL Divergence loss, weight value and unweighted KL Divergence.
+
+        """
 
         nll_loss = NLL(predictions, targets)
 
@@ -71,6 +82,43 @@ def main(args):
         kl_weighted = kl_weight * kl_loss
 
         return nll_loss, kl_weighted, kl_weight, kl_loss
+
+    def inference(model, train_dataset, n=10):
+        """ Executes the model in inference mode and returns string of inputs and corresponding
+        generations.
+
+        Parameters
+        ----------
+        model : DIAL-LV
+            The DIAL-LV model.
+        train_dataset : type
+            Training dataset to draw random input samples from.
+        n : type
+            Number of samples to draw and generated responses.
+
+        Returns
+        -------
+        string, string
+            Two string, each consiting of n utterances. `Prompts` contains the input sequence and
+            `replies` the generated response sequence.
+
+        """
+
+        random_question_idx = np.random.choice(np.arange(0, len(train_dataset)), 10, replace=False).astype('int64')
+        random_questions = np.zeros((n, args.max_utterance_length)).astype('int64')
+        random_questions_length = np.zeros(n)
+        for i, rqi in enumerate(random_question_idx):
+            random_questions[i] = train_dataset[rqi]['question']
+            random_questions_length[i] = train_dataset[rqi]['question_length']
+
+        input_sequence = to_var(torch.from_numpy(random_questions))
+        input_length = to_var(torch.from_numpy(random_questions_length))
+        prompts = idx2word(input_sequence.data, train_dataset.i2w)
+
+        replies = model.inference(input_sequence, input_length)
+        replies = idx2word(replies, train_dataset.i2w)
+
+        return prompts, replies
 
     ts = time.time()
     if args.tensorboard_logging:
@@ -90,11 +138,12 @@ def main(args):
             if split == 'train':
                 model.train()
             else:
+                # disable drop out when in validation
                 model.eval()
 
             for iteration, batch in enumerate(data_loader):
 
-                # get batch items
+                # get batch items and wrap them in variables
                 for k, v in batch.items():
                     if torch.is_tensor(v):
                         batch[k] = to_var(v)
@@ -104,7 +153,7 @@ def main(args):
                 answer = batch['answer']
                 answer_length = batch['answer_length']
 
-
+                # model forward pass
                 predictions, mean, log_var = model(
                     prompt_sequece=question,
                     prompt_length=question_length,
@@ -112,10 +161,12 @@ def main(args):
                     reply_length=answer_length
                     )
 
+                # predictions come back packed, so making targets packed as well to ignore all padding tokens
                 sorted_length, sort_idx = answer_length.sort(0, descending=True)
                 targets = answer[sort_idx]
                 targets = pack_padded_sequence(targets, sorted_length.data.tolist(), batch_first=True)[0]
 
+                # compute the loss
                 nll_loss, kl_weighted_loss, kl_weight, kl_loss = loss_fn(predictions, targets, mean, log_var, args.kl_anneal_k, args.kl_anneal_x0, global_step)
                 loss = nll_loss + kl_weighted_loss
 
@@ -140,7 +191,7 @@ def main(args):
                     writer.add_scalar("%s/Batch-KL-Loss-Weighted"%(split), kl_weighted_loss.data[0], epoch * len(data_loader) + iteration)
 
                 if iteration % args.print_every == 0 or iteration+1 == len(data_loader):
-                    print("%s Batch %04d/%i, Loss %.4f, NLL Loss %.4f, KL Loss %.4f, KL_w Loss %.4f, w %.4f"
+                    print("%s Batch %04d/%i, Loss %9.4f, NLL Loss %9.4f, KL Loss %9.4f, KL_w Loss %6.4f, w %.4f"
                         %(split.upper(), iteration, len(data_loader), loss.data[0], nll_loss.data[0], kl_loss.data[0], kl_weighted_loss.data[0], kl_weight))
 
                     prompts, replies = inference(model, datasets['train'])
