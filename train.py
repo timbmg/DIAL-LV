@@ -45,6 +45,7 @@ def main(args):
                     embedding_size=args.embedding_size,
                     hidden_size=args.hidden_size,
                     latent_size=args.latent_size,
+                    word_dropout=args.word_dropout,
                     pad_idx=datasets['train'].pad_idx,
                     sos_idx=datasets['train'].sos_idx,
                     eos_idx=datasets['train'].eos_idx,
@@ -85,6 +86,11 @@ def main(args):
             data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, shuffle=split=='train')
 
             tracker = defaultdict(torch.Tensor)
+
+            if split == 'train':
+                model.train()
+            else:
+                model.eval()
 
             for iteration, batch in enumerate(data_loader):
 
@@ -157,6 +163,7 @@ if __name__ == '__main__':
     parser.add_argument("--embedding_size", type=int, default=300)
     parser.add_argument("--hidden_size", type=int, default=512)
     parser.add_argument("--latent_size", type=int, default=64)
+    parser.add_argument("--word_dropout", type=float, default=0.5)
     parser.add_argument("--kl_anneal_k", type=float, default=0.00025, help="Steepness of Annealing function")
     parser.add_argument("--kl_anneal_x0", type=int, default=15000, help="Midpoint of Annealing function (i.e. weight=0.5)")
     parser.add_argument("--epochs", type=int, default=50)

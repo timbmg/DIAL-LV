@@ -5,8 +5,8 @@ from utils import to_var
 
 class DialLV(nn.Module):
 
-    def __init__(self, vocab_size, embedding_size, hidden_size, latent_size, pad_idx, sos_idx,
-                eos_idx, max_utterance_length):
+    def __init__(self, vocab_size, embedding_size, hidden_size, latent_size, word_dropout, pad_idx,
+                sos_idx, eos_idx, max_utterance_length):
 
         super(DialLV, self).__init__()
 
@@ -21,8 +21,8 @@ class DialLV(nn.Module):
         self.linear_log_var = nn.Linear(hidden_size*4, latent_size)
 
         # Reply Decoder
-        self.decoder= Decoder(vocab_size, embedding_size, hidden_size, latent_size, sos_idx, eos_idx,
-                                pad_idx, max_utterance_length)
+        self.decoder= Decoder(vocab_size, embedding_size, hidden_size, latent_size, word_dropout,
+                                sos_idx, eos_idx, pad_idx, max_utterance_length)
 
     def forward(self, prompt_sequece, prompt_length, reply_sequence, reply_length):
 
@@ -101,8 +101,8 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
 
-    def __init__(self, vocab_size, embedding_size, hidden_size, latent_size, pad_idx, sos_idx,
-                eos_idx, max_utterance_length):
+    def __init__(self, vocab_size, embedding_size, hidden_size, latent_size, word_dropout, pad_idx,
+                sos_idx, eos_idx, max_utterance_length):
 
         super(Decoder, self).__init__()
         self.pad_idx = pad_idx
@@ -112,6 +112,8 @@ class Decoder(nn.Module):
         self.sample_mode = 'greedy'
 
         self.embedding = nn.Embedding(vocab_size, embedding_size)
+
+        self.word_dropout = nn.Dropout(p=word_dropout)
 
         self.RNN = nn.GRU(embedding_size, hidden_size*2 + latent_size, batch_first=True)
 
@@ -131,7 +133,7 @@ class Decoder(nn.Module):
 
         # embedd input sequence
         input_embedding = self.embedding(input_sequence)
-
+        input_embedding = self.word_dropout(input_embedding)
         # RNN forwardpass
         packed_inputs = pack_padded_sequence(input_embedding, input_length.data.tolist(), batch_first=True)
         outputs, _ = self.RNN(packed_inputs, hx=inital_hidden)
