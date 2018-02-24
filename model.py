@@ -5,7 +5,8 @@ from utils import to_var
 
 class DialLV(nn.Module):
 
-    def __init__(self, vocab_size, embedding_size, hidden_size, latent_size):
+    def __init__(self, vocab_size, embedding_size, hidden_size, latent_size, pad_idx, sos_idx,
+                eos_idx, max_utterance_length):
 
         super(DialLV, self).__init__()
 
@@ -20,7 +21,8 @@ class DialLV(nn.Module):
         self.linear_log_var = nn.Linear(hidden_size*4, latent_size)
 
         # Reply Decoder
-        self.decoder= Decoder(vocab_size, embedding_size, hidden_size, latent_size)
+        self.decoder= Decoder(vocab_size, embedding_size, hidden_size, latent_size, sos_idx, eos_idx,
+                                pad_idx, max_utterance_length)
 
     def forward(self, prompt_sequece, prompt_length, reply_sequence, reply_length):
 
@@ -45,6 +47,17 @@ class DialLV(nn.Module):
         out = self.decoder(reply_sequence, reply_length, prompt_state, z)
 
         return out, means, log_var
+
+    def inference(self, prompt_sequece, prompt_length):
+
+        prompt_state = self.prompt_encoder(prompt_sequece, prompt_length)
+
+        batch_size = prompt_sequece.size(0)
+        z = to_var(torch.randn([batch_size, self.latent_size]))
+
+        out = self.decoder.inference(prompt_state, z)
+
+        return out
 
 
 class Encoder(nn.Module):
@@ -88,9 +101,15 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
 
-    def __init__(self, vocab_size, embedding_size, hidden_size, latent_size):
+    def __init__(self, vocab_size, embedding_size, hidden_size, latent_size, pad_idx, sos_idx,
+                eos_idx, max_utterance_length):
 
         super(Decoder, self).__init__()
+        self.pad_idx = pad_idx
+        self.sos_idx = sos_idx
+        self.eos_idx = eos_idx
+        self.max_utterance_length = max_utterance_length
+        self.sample_mode = 'greedy'
 
         self.embedding = nn.Embedding(vocab_size, embedding_size)
 
@@ -116,10 +135,80 @@ class Decoder(nn.Module):
         # RNN forwardpass
         packed_inputs = pack_padded_sequence(input_embedding, input_length.data.tolist(), batch_first=True)
         outputs, _ = self.RNN(packed_inputs, hx=inital_hidden)
-        #outputs, _ = pad_packed_sequence(outputs, batch_first=True)
 
         logits = self.out(outputs.data)
 
         log_probs = torch.nn.functional.log_softmax(logits)
 
         return log_probs
+
+    def inference(self, hx, z):
+
+        hidden = torch.cat((hx, z), dim=-1)
+        hidden = hidden.unsqueeze(0)
+
+        batch_size = hx.size(0)
+
+        running = torch.arange(0, batch_size).long()
+
+        samples = torch.Tensor(batch_size, self.max_utterance_length).fill_(self.pad_idx).long()
+
+        t = 0
+        while(len(running) > 0 and t<self.max_utterance_length):
+
+            if t == 0:
+                input = to_var(torch.Tensor([self.sos_idx] * batch_size).long())
+
+            input_embedding = self.embedding(input.unsqueeze(1))
+
+            outputs, hidden = self.RNN(input_embedding, hidden)
+            hidden = hidden.transpose(1,0)
+
+            logits = self.out(outputs)
+            log_probs = torch.nn.functional.log_softmax(logits)
+
+            # get next input
+            input = self._sample(log_probs)
+
+            # save next input
+            samples = self._save_sample(samples, input, running, t)
+
+            running_mask = (input != self.eos_idx).data # check for sequences where <eos> was generated
+            running = torch.masked_select(running, running_mask)
+
+            if len(running > 0):
+                try:
+                    input = input[running]
+                except:
+                    print(input)
+                    print(running)
+                    raise
+
+            t += 1
+
+        return samples
+
+    def _sample(self, predictions):
+
+        if self.sample_mode == 'greedy':
+            _, sample = torch.topk(predictions, 1, dim=-1)
+            sample = sample.squeeze()
+
+        else:
+            raise NotImplementedError("Sample method %s not implemented."%self.sample_mode)
+
+            # TODO add sampling from distribution
+
+
+        return sample
+
+    def _save_sample(self, save_to, sample, running, t):
+
+        # select only still running
+        running_latest = save_to[running]
+        # update token at position t
+        running_latest[:,t] = sample.data
+        # save back
+        save_to[running] = running_latest
+
+        return save_to
