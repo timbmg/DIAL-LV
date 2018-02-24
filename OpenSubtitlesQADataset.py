@@ -25,7 +25,7 @@ class OpenSubtitlesQADataset(Dataset):
         self.vocab_file_path = os.path.join(self.root, self.vocab_file_name)
 
         # set fall back params
-        self.min_occ = kwargs.get('min_occ', 100)
+        self.min_occ = kwargs.get('min_occ', 50)
         self.max_utterance_length = kwargs.get('max_utterance_length', 30)
 
         if kwargs.get('create_data', False):
@@ -127,7 +127,8 @@ class OpenSubtitlesQADataset(Dataset):
 
                 # cut off
                 question_idx = question_idx[:self.max_utterance_length]
-                answer_idx = answer_idx[:self.max_utterance_length]
+                answer_idx = answer_idx[:self.max_utterance_length-2]
+                answer_idx = [self.sos_idx] + answer_idx + [self.eos_idx]
 
                 # save length before pad
                 dataset[id]['question_length'] = len(question_idx)
@@ -173,7 +174,7 @@ class OpenSubtitlesQADataset(Dataset):
         w2i = dict()
         i2w = dict()
 
-        special_tokens = ['<pad>', '<sos>', '<eos>', '<unk>']
+        special_tokens = ['<pad>', '<unk>', '<sos>', '<eos>']
         for st in special_tokens:
             i2w[len(w2i)] = st
             w2i[st] = len(w2i)
@@ -184,7 +185,7 @@ class OpenSubtitlesQADataset(Dataset):
                 line = self._preprocess(line)
                 question, answer = line.split('|||')
                 question = question[:self.max_utterance_length]
-                answer = answer[:self.max_utterance_length]
+                answer = answer[:self.max_utterance_length-2] # sos and eos token will be added
                 words = tokenizer.tokenize(question + answer)
                 w2c.update(words)
 
