@@ -66,12 +66,12 @@ class OpenSubtitlesQADataset(Dataset):
 
     def _preprocess(self, line):
         line=line.lower()
-        line=line.replace('\'s ','is ')
-        line=line.replace('\'re ','are ')
-        line=line.replace('\'m ', 'am ')
-        line=line.replace('\'ve ', 'have ')
-        line=line.replace('\'ll ','will ')
-        line=line.replace('n\'t ', 'not ')
+        line=line.replace('\'s ',' is ')
+        line=line.replace('\'re ',' are ')
+        line=line.replace('\'m ', ' am ')
+        line=line.replace('\'ve ', ' have ')
+        line=line.replace('\'ll ',' will ')
+        line=line.replace('n\'t ', ' not ')
         line=line.replace(' wo not',' will not')
         line=line.replace(' ca not',' can not')
         line=re.sub('[\!;-]+','',line)
@@ -184,10 +184,12 @@ class OpenSubtitlesQADataset(Dataset):
             for i, line in enumerate(file):
                 line = self._preprocess(line)
                 question, answer = line.split('|||')
+                question = tokenizer.tokenize(question)
                 question = question[:self.max_utterance_length]
+                answer = tokenizer.tokenize(answer)
                 answer = answer[:self.max_utterance_length-2] # sos and eos token will be added
-                words = tokenizer.tokenize(question + answer)
-                w2c.update(words)
+                words = question + answer
+                w2c.update(question+answer)
 
                 if i > 1000000:
                     break
