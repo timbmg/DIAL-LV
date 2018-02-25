@@ -115,12 +115,12 @@ def main(args):
 
         input_sequence = to_var(torch.from_numpy(random_questions))
         input_length = to_var(torch.from_numpy(random_questions_length))
-        prompts = idx2word(input_sequence.data, train_dataset.i2w)
+        prompts = idx2word(input_sequence.data, train_dataset.i2w, train_dataset.pad_idx)
 
         replies = list()
         for i in range(m):
             replies_ = model.inference(input_sequence, input_length)
-            replies.append(idx2word(replies_, train_dataset.i2w))
+            replies.append(idx2word(replies_, train_dataset.i2w, train_dataset.pad_idx))
 
         return prompts, replies
 

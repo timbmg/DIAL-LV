@@ -20,7 +20,7 @@ def to_var(x, volatile=False):
         x = x.cuda()
     return Variable(x, volatile=volatile)
 
-def idx2word(idx, i2w):
+def idx2word(idx, i2w, pad_idx):
     """Maps given indicies `idx` to words.
 
     Parameters
@@ -29,6 +29,8 @@ def idx2word(idx, i2w):
         Word indicies.
     i2w : dict
         Dictionary mapping indicies to words.
+    pad_idx : int
+        Index of padding token.
 
     Returns
     -------
@@ -42,6 +44,8 @@ def idx2word(idx, i2w):
 
     for sent in idx:
         for id in sent:
+            if id == pad_idx:
+                break
             words += i2w[str(id)] + " "
 
         words += "\n"
