@@ -167,12 +167,14 @@ class Decoder(nn.Module):
 
         batch_size = hx.size(0)
 
-        running = torch.arange(0, batch_size).long()
+        # required for dynamic stopping of reply generation
+        sequence_idx = torch.arange(0, batch_size).long() # all ids
+        running_seqs = torch.arange(0, batch_size).long() # still generating sequences
+        running_mask = torch.ones(batch_size).byte() # auxilliary mask to prune termineted sequences
 
         samples = torch.Tensor(batch_size, self.max_utterance_length).fill_(self.pad_idx).long()
-
         t = 0
-        while(len(running) > 0 and t<self.max_utterance_length):
+        while(len(running_seqs) > 0 and t<self.max_utterance_length):
 
             if t == 0:
                 input = to_var(torch.Tensor([self.sos_idx] * batch_size).long())
@@ -189,18 +191,14 @@ class Decoder(nn.Module):
             input = self._sample(log_probs)
 
             # save next input
-            samples = self._save_sample(samples, input, running, t)
+            samples = self._save_sample(samples, input, running_seqs, t)
 
-            running_mask = (input != self.eos_idx).data # check for sequences where <eos> was generated
-            running = torch.masked_select(running, running_mask)
+            # update running sequences
+            running_mask[running_seqs] = (input != self.eos_idx).data
+            running_seqs = torch.masked_select(running_seqs, running_mask)
 
-            if len(running > 0):
-                try:
-                    input = input[running]
-                except:
-                    print(input)
-                    print(running)
-                    raise
+            if len(running_seqs) > 0:
+                input = input[running_seqs]
 
             t += 1
 
