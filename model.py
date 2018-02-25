@@ -21,8 +21,18 @@ class DialLV(nn.Module):
         self.linear_log_var = nn.Linear(hidden_size*4, latent_size)
 
         # Reply Decoder
-        self.decoder= Decoder(vocab_size, embedding_size, hidden_size, latent_size, word_dropout,
-                                sos_idx, eos_idx, pad_idx, max_utterance_length)
+        self.decoder = Decoder(
+            vocab_size=vocab_size,
+            embedding_size=embedding_size,
+            hidden_size=hidden_size,
+            latent_size=latent_size,
+            word_dropout=word_dropout,
+            pad_idx=pad_idx,
+            sos_idx=sos_idx,
+            eos_idx=eos_idx,
+            max_utterance_length=max_utterance_length
+            )
+
 
     def forward(self, prompt_sequece, prompt_length, reply_sequence, reply_length):
 
@@ -168,11 +178,15 @@ class Decoder(nn.Module):
         batch_size = hx.size(0)
 
         # required for dynamic stopping of reply generation
-        sequence_idx = torch.arange(0, batch_size).long() # all ids
-        running_seqs = torch.arange(0, batch_size).long() # still generating sequences
-        running_mask = torch.ones(batch_size).byte() # auxilliary mask to prune termineted sequences
+        sequence_idx = torch.arange(0, batch_size).long() # all idx of batch
+        sequence_running = torch.arange(0, batch_size).long() # all idx of batch wich are still generating
+        sequence_mask = torch.ones(batch_size).byte()
 
-        samples = torch.Tensor(batch_size, self.max_utterance_length).fill_(self.pad_idx).long()
+        running_seqs = torch.arange(0, batch_size).long() # idx of still generating sequences with respect to current loop
+        running_mask = torch.ones(batch_size).byte()
+
+
+        replies = torch.Tensor(batch_size, self.max_utterance_length).fill_(self.pad_idx).long()
         t = 0
         while(len(running_seqs) > 0 and t<self.max_utterance_length):
 
@@ -191,18 +205,26 @@ class Decoder(nn.Module):
             input = self._sample(log_probs)
 
             # save next input
-            samples = self._save_sample(samples, input, running_seqs, t)
+            replies = self._save_sample(replies, input, sequence_running, t)
 
-            # update running sequences
-            running_mask[running_seqs] = (input != self.eos_idx).data
-            running_seqs = torch.masked_select(running_seqs, running_mask)
+            # update gloabl running sequence
+            sequence_mask[sequence_running] = (input != self.eos_idx).data
+            sequence_running = sequence_idx.masked_select(sequence_mask)
 
+            # update local running sequences
+            running_mask = (input != self.eos_idx).data
+            running_seqs = running_seqs.masked_select(running_mask)
+
+            # prune input and hidden state according to local update
             if len(running_seqs) > 0:
                 input = input[running_seqs]
+                hidden = hidden[running_seqs]
+
+                running_seqs = torch.arange(0, len(running_seqs)).long()
 
             t += 1
 
-        return samples
+        return replies
 
     def _sample(self, predictions):
         """Samples from predictions distribution.
@@ -231,7 +253,7 @@ class Decoder(nn.Module):
 
         return sample
 
-    def _save_sample(self, save_to, sample, running, t):
+    def _save_sample(self, save_to, sample, running_seqs, t):
         """Saves a sample into a `save_to` at current timestep (t), given the sequences which are
         still generating (running).
 
@@ -253,10 +275,10 @@ class Decoder(nn.Module):
 
         """
         # select only still running
-        running_latest = save_to[running]
+        running_latest = save_to[running_seqs]
         # update token at position t
         running_latest[:,t] = sample.data
         # save back
-        save_to[running] = running_latest
+        save_to[running_seqs] = running_latest
 
         return save_to
