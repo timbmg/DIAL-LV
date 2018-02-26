@@ -3,6 +3,7 @@ import torch
 import argparse
 import numpy as np
 from collections import defaultdict
+from multiprocessing import cpu_count
 from tensorboardX import SummaryWriter
 from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pack_padded_sequence
@@ -10,6 +11,7 @@ from torch.nn.utils.rnn import pack_padded_sequence
 from model import DialLV
 from utils import to_var, idx2word, save_dial_to_json
 from OpenSubtitlesQADataset import OpenSubtitlesQADataset
+from GuessWhatDataset import GuessWhatDataset
 
 def main(args):
 
@@ -17,12 +19,22 @@ def main(args):
 
     datasets = dict()
     for split in splits:
-        datasets[split] = OpenSubtitlesQADataset(
-            root='data',
-            split=split,
-            min_occ=args.min_occ,
-            max_utterance_length=args.max_utterance_length
-            )
+        if args.dataset.lower() == 'opensubtitles':
+            datasets[split] = OpenSubtitlesQADataset(
+                root='data',
+                split=split,
+                min_occ=args.min_occ,
+                max_prompt_length=args.max_input_length,
+                max_reply_length=args.max_reply_length
+                )
+        elif args.dataset.lower() == 'guesswhat':
+            datasets[split] = GuessWhatDataset(
+                root='data',
+                split=split,
+                min_occ=args.min_occ,
+                max_dialogue_length=args.max_input_length,
+                max_question_length=args.max_reply_length
+                )
 
     model = DialLV(vocab_size=datasets['train'].vocab_size,
                     embedding_size=args.embedding_size,
@@ -32,8 +44,12 @@ def main(args):
                     pad_idx=datasets['train'].pad_idx,
                     sos_idx=datasets['train'].sos_idx,
                     eos_idx=datasets['train'].eos_idx,
-                    max_utterance_length=args.max_utterance_length
+                    max_utterance_length=args.max_reply_length
                     )
+
+    if torch.cuda.is_available():
+        model = model.cuda()
+    print(model)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
 
@@ -106,15 +122,15 @@ def main(args):
 
         """
 
-        random_question_idx = np.random.choice(np.arange(0, len(train_dataset)), 10, replace=False).astype('int64')
-        random_questions = np.zeros((n, args.max_utterance_length)).astype('int64')
-        random_questions_length = np.zeros(n)
-        for i, rqi in enumerate(random_question_idx):
-            random_questions[i] = train_dataset[rqi]['question']
-            random_questions_length[i] = train_dataset[rqi]['question_length']
+        random_input_idx = np.random.choice(np.arange(0, len(train_dataset)), 10, replace=False).astype('int64')
+        random_inputs = np.zeros((n, args.max_input_length)).astype('int64')
+        random_inputs_length = np.zeros(n)
+        for i, rqi in enumerate(random_input_idx):
+            random_inputs[i] = train_dataset[rqi]['input_sequence']
+            random_inputs_length[i] = train_dataset[rqi]['input_length']
 
-        input_sequence = to_var(torch.from_numpy(random_questions))
-        input_length = to_var(torch.from_numpy(random_questions_length))
+        input_sequence = to_var(torch.from_numpy(random_inputs).long())
+        input_length = to_var(torch.from_numpy(random_inputs_length).long())
         prompts = idx2word(input_sequence.data, train_dataset.i2w, train_dataset.pad_idx)
 
         replies = list()
@@ -135,9 +151,18 @@ def main(args):
 
         for split, dataset in datasets.items():
 
-            data_loader = DataLoader(dataset=dataset, batch_size=args.batch_size, shuffle=split=='train')
-
-            tracker = defaultdict(torch.Tensor)
+            data_loader = DataLoader(
+                dataset=dataset,
+                batch_size=args.batch_size,
+                shuffle=split=='train',
+                #num_workers=cpu_count(),
+                num_workers=1,
+                pin_memory=torch.cuda.is_available()
+                )
+            if torch.cuda.is_available():
+                tracker = defaultdict(torch.cuda.FloatTensor)
+            else:
+                tracker = defaultdict(torch.FloatTensor)
 
             if split == 'train':
                 model.train()
@@ -152,23 +177,24 @@ def main(args):
                     if torch.is_tensor(v):
                         batch[k] = to_var(v)
 
-                question = batch['question']
-                question_length = batch['question_length']
-                answer_input = batch['answer_input']
-                answer_target = batch['answer_target']
-                answer_length = batch['answer_length']
+                input_sequence = batch['input_sequence']
+                input_length = batch['input_length']
+                reply_sequence_in = batch['reply_sequence_in']
+                reply_sequence_out = batch['reply_sequence_out']
+                reply_length = batch['reply_length']
+
 
                 # model forward pass
                 predictions, mean, log_var = model(
-                    prompt_sequece=question,
-                    prompt_length=question_length,
-                    reply_sequence=answer_input,
-                    reply_length=answer_length
+                    prompt_sequece=input_sequence,
+                    prompt_length=input_length,
+                    reply_sequence=reply_sequence_in,
+                    reply_length=reply_length
                     )
 
                 # predictions come back packed, so making targets packed as well to ignore all padding tokens
-                sorted_length, sort_idx = answer_length.sort(0, descending=True)
-                targets = answer_target[sort_idx]
+                sorted_length, sort_idx = reply_length.sort(0, descending=True)
+                targets = reply_sequence_out[sort_idx]
                 targets = pack_padded_sequence(targets, sorted_length.data.tolist(), batch_first=True)[0]
 
                 # compute the loss
@@ -185,7 +211,10 @@ def main(args):
                 tracker['loss'] = torch.cat((tracker['loss'], loss.data))
                 tracker['nll_loss'] = torch.cat((tracker['nll_loss'], nll_loss.data))
                 tracker['kl_weighted_loss'] = torch.cat((tracker['kl_weighted_loss'], kl_weighted_loss.data))
-                tracker['kl_weight'] = torch.cat((tracker['kl_weight'], torch.Tensor([kl_weight])))
+                if torch.cuda.is_available():
+                    tracker['kl_weight'] = torch.cat((tracker['kl_weight'], torch.cuda.FloatTensor([kl_weight])))
+                else:
+                    tracker['kl_weight'] = torch.cat((tracker['kl_weight'], torch.Tensor([kl_weight])))
                 tracker['kl_loss'] = torch.cat((tracker['kl_loss'], kl_loss.data))
 
                 if args.tensorboard_logging:
@@ -211,9 +240,11 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_path", type=str, default="data")
+    parser.add_argument("--dataset", type=str, default="OpenSubtitles")
     parser.add_argument("--create_data", action='store_true')
-    parser.add_argument("--min_occ", type=int, default=50)
-    parser.add_argument("--max_utterance_length", type=int, default=30)
+    parser.add_argument("--min_occ", type=int, default=3)
+    parser.add_argument("--max_input_length", type=int, default=100)
+    parser.add_argument("--max_reply_length", type=int, default=15)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--learning_rate", type=float, default=0.0005)
     parser.add_argument("--embedding_size", type=int, default=300)

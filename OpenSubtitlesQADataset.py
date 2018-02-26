@@ -26,7 +26,7 @@ class OpenSubtitlesQADataset(Dataset):
 
         # set fall back params
         self.min_occ = kwargs.get('min_occ', 50)
-        self.max_utterance_length = kwargs.get('max_utterance_length', 30)
+        self.max_utterance_length = kwargs.get('max_prompt_length', 30)
 
         if kwargs.get('create_data', False):
             self._create_preporcessed_data(**kwargs)
@@ -55,11 +55,11 @@ class OpenSubtitlesQADataset(Dataset):
 
     def __getitem__(self, idx):
         return {
-            'question':         self.dataset['question'][idx].astype('int64'),
-            'question_length':  self.dataset['question_length'][idx].astype('int64'),
-            'answer_input':     self.dataset['answer_input'][idx].astype('int64'),
-            'answer_target':    self.dataset['answer_target'][idx].astype('int64'),
-            'answer_length':    self.dataset['answer_length'][idx].astype('int64')
+            'input_sequence':         self.dataset['question'][idx].astype('int64'),
+            'input_length':  self.dataset['question_length'][idx].astype('int64'),
+            'reply_sequence_in':     self.dataset['answer_input'][idx].astype('int64'),
+            'reply_sequence_out':    self.dataset['answer_target'][idx].astype('int64'),
+            'reply_length':    self.dataset['answer_length'][idx].astype('int64')
         }
 
     def __len__(self):

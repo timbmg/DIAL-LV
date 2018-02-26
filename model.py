@@ -17,8 +17,8 @@ class DialLV(nn.Module):
         self.prompt_encoder = Encoder(self.encoder_embedding, embedding_size, hidden_size)
         self.reply_encoder = Encoder(self.encoder_embedding, embedding_size, hidden_size)
 
-        self.linear_mean = nn.Linear(hidden_size*4, latent_size)
-        self.linear_log_var = nn.Linear(hidden_size*4, latent_size)
+        self.linear_mean = nn.Linear(hidden_size*2, latent_size)
+        self.linear_log_var = nn.Linear(hidden_size*2, latent_size)
 
         # Reply Decoder
         self.decoder = Decoder(
@@ -80,7 +80,7 @@ class Encoder(nn.Module):
 
         self.RNN = nn.GRU(embedding_size, hidden_size, batch_first=True, bidirectional=bidirectional)
 
-        self.linear = nn.Linear(hidden_size*2, hidden_size*2) # not clear from paper what the out dimensionaltiy is here
+        self.linear = nn.Linear(hidden_size*2, hidden_size) # not clear from paper what the out dimensionaltiy is here
 
     def forward(self, input_sequence, input_length):
 
@@ -125,9 +125,9 @@ class Decoder(nn.Module):
 
         self.word_dropout = nn.Dropout(p=word_dropout)
 
-        self.RNN = nn.GRU(embedding_size, hidden_size*2 + latent_size, batch_first=True)
+        self.RNN = nn.GRU(embedding_size, hidden_size + latent_size, batch_first=True)
 
-        self.out = nn.Linear(hidden_size*2+latent_size, vocab_size)
+        self.out = nn.Linear(hidden_size+latent_size, vocab_size)
 
     def forward(self, input_sequence, input_length, hx, z):
 
@@ -178,15 +178,15 @@ class Decoder(nn.Module):
         batch_size = hx.size(0)
 
         # required for dynamic stopping of reply generation
-        sequence_idx = torch.arange(0, batch_size).long() # all idx of batch
-        sequence_running = torch.arange(0, batch_size).long() # all idx of batch wich are still generating
-        sequence_mask = torch.ones(batch_size).byte()
+        sequence_idx = torch.arange(0, batch_size).long().cuda() if torch.cuda.is_available() else torch.arange(0, batch_size).long() # all idx of batch
+        sequence_running = torch.arange(0, batch_size).long().cuda() if torch.cuda.is_available() else torch.arange(0, batch_size).long()# all idx of batch wich are still generating
+        sequence_mask = torch.ones(batch_size).byte().cuda() if torch.cuda.is_available() else torch.ones(batch_size).byte()
 
-        running_seqs = torch.arange(0, batch_size).long() # idx of still generating sequences with respect to current loop
-        running_mask = torch.ones(batch_size).byte()
+        running_seqs = torch.arange(0, batch_size).long().cuda() if torch.cuda.is_available() else torch.arange(0, batch_size).long() # idx of still generating sequences with respect to current loop
+        #running_mask = torch.ones(batch_size).byte()
 
+        replies = torch.Tensor(batch_size, self.max_utterance_length).fill_(self.pad_idx).long().cuda() if torch.cuda.is_available() else torch.Tensor(batch_size, self.max_utterance_length).fill_(self.pad_idx).long()
 
-        replies = torch.Tensor(batch_size, self.max_utterance_length).fill_(self.pad_idx).long()
         t = 0
         while(len(running_seqs) > 0 and t<self.max_utterance_length):
 
@@ -194,6 +194,9 @@ class Decoder(nn.Module):
                 input = to_var(torch.Tensor([self.sos_idx] * batch_size).long())
 
             input_embedding = self.embedding(input.unsqueeze(1))
+
+            if t > 0:
+                hidden = hidden.transpose(1,0)
 
             outputs, hidden = self.RNN(input_embedding, hidden)
             hidden = hidden.transpose(1,0)
@@ -220,7 +223,7 @@ class Decoder(nn.Module):
                 input = input[running_seqs]
                 hidden = hidden[running_seqs]
 
-                running_seqs = torch.arange(0, len(running_seqs)).long()
+                running_seqs = torch.arange(0, len(running_seqs)).long().cuda() if torch.cuda.is_available() else torch.arange(0, len(running_seqs)).long()
 
             t += 1
 
