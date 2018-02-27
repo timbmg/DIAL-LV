@@ -208,34 +208,35 @@ def main(args):
                     global_step += 1
 
                 # bookkeeping
-                tracker['loss'] = torch.cat((tracker['loss'], loss.data/batch_size))
-                tracker['nll_loss'] = torch.cat((tracker['nll_loss'], nll_loss.data/batch_size))
-                tracker['kl_weighted_loss'] = torch.cat((tracker['kl_weighted_loss'], kl_weighted_loss.data/batch_size))
-                tracker['kl_weight'] = torch.cat((tracker['kl_weight'], tensor([kl_weight])/batch_size))
-                tracker['kl_loss'] = torch.cat((tracker['kl_loss'], kl_loss.data/batch_size))
+                tracker['loss']             = torch.cat((tracker['loss'],               loss.data/batch_size))
+                tracker['nll_loss']         = torch.cat((tracker['nll_loss'],           nll_loss.data/batch_size))
+                tracker['kl_loss']          = torch.cat((tracker['kl_loss'],            kl_loss.data/batch_size))
+                tracker['kl_weight']        = torch.cat((tracker['kl_weight'],          tensor([kl_weight])))
+                tracker['kl_weighted_loss'] = torch.cat((tracker['kl_weighted_loss'],   kl_weighted_loss.data/batch_size))
 
                 if args.tensorboard_logging:
-                    writer.add_scalar("%s/Batch-Loss"%(split), loss.data[0], epoch * len(data_loader) + iteration)
-                    writer.add_scalar("%s/Batch-NLL-Loss"%(split), nll_loss.data[0], epoch * len(data_loader) + iteration)
-                    writer.add_scalar("%s/Batch-KL-Loss"%(split), kl_loss.data[0], epoch * len(data_loader) + iteration)
-                    writer.add_scalar("%s/Batch-KL-Weight"%(split), kl_weight, epoch * len(data_loader) + iteration)
-                    writer.add_scalar("%s/Batch-KL-Loss-Weighted"%(split), kl_weighted_loss.data[0], epoch * len(data_loader) + iteration)
+                    step = epoch * len(data_loader) + iteration
+                    writer.add_scalar("%s/Batch-Loss"%(split),              tracker['loss'][-1],                step)
+                    writer.add_scalar("%s/Batch-NLL-Loss"%(split),          tracker['nll_loss'][-1],            step)
+                    writer.add_scalar("%s/Batch-KL-Loss"%(split),           tracker['kl_loss'][-1],             step)
+                    writer.add_scalar("%s/Batch-KL-Weight"%(split),         tracker['kl_weight'][-1],           step)
+                    writer.add_scalar("%s/Batch-KL-Loss-Weighted"%(split),  tracker['kl_weighted_loss'][-1],    step)
 
                 if iteration % args.print_every == 0 or iteration+1 == len(data_loader):
                     print("%s Batch %04d/%i, Loss %9.4f, NLL Loss %9.4f, KL Loss %9.4f, KLW Loss %9.4f, w %6.4f"
                         %(split.upper(), iteration, len(data_loader),
-                        loss.data[0]/batch_size,  nll_loss.data[0]/batch_size, kl_loss.data[0]/batch_size,
-                        kl_weighted_loss.data[0]/batch_size, kl_weight/batch_size))
+                        tracker['loss'][-1], tracker['nll_loss'][-1], tracker['kl_loss'][-1],
+                        tracker['kl_weighted_loss'][-1], tracker['kl_weight'][-1]))
 
                     prompts, replies = inference(model, datasets['train'])
                     save_dial_to_json(prompts, replies, root="dials/"+str(ts)+"/", comment="E"+str(epoch) + "I"+str(iteration))
 
             print("%s Epoch %02d/%i, Mean Loss: %.4f"%(split.upper(), epoch, args.epochs, torch.mean(tracker['loss'])))
             if args.tensorboard_logging:
-                writer.add_scalar("%s/Epoch-Loss"%(split), torch.mean(tracker['loss']), epoch)
-                writer.add_scalar("%s/Epoch-NLL-Loss"%(split), torch.mean(tracker['nll_loss']), epoch)
-                writer.add_scalar("%s/Epoch-KL-Loss"%(split), torch.mean(tracker['kl_loss']), epoch)
-                
+                writer.add_scalar("%s/Epoch-Loss"%(split),      torch.mean(tracker['loss']),        epoch)
+                writer.add_scalar("%s/Epoch-NLL-Loss"%(split),  torch.mean(tracker['nll_loss']),    epoch)
+                writer.add_scalar("%s/Epoch-KL-Loss"%(split),   torch.mean(tracker['kl_loss']),     epoch)
+
             # TODO: save model
 
 
