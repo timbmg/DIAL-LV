@@ -181,6 +181,7 @@ def main(args):
                 reply_sequence_in = batch['reply_sequence_in']
                 reply_sequence_out = batch['reply_sequence_out']
                 reply_length = batch['reply_length']
+                batch_size = input_sequence.size(0)
 
 
                 # model forward pass
@@ -207,11 +208,11 @@ def main(args):
                     global_step += 1
 
                 # bookkeeping
-                tracker['loss'] = torch.cat((tracker['loss'], loss.data))
-                tracker['nll_loss'] = torch.cat((tracker['nll_loss'], nll_loss.data))
-                tracker['kl_weighted_loss'] = torch.cat((tracker['kl_weighted_loss'], kl_weighted_loss.data))
-                tracker['kl_weight'] = torch.cat((tracker['kl_weight'], tensor([kl_weight])))
-                tracker['kl_loss'] = torch.cat((tracker['kl_loss'], kl_loss.data))
+                tracker['loss'] = torch.cat((tracker['loss'], loss.data/batch_size))
+                tracker['nll_loss'] = torch.cat((tracker['nll_loss'], nll_loss.data/batch_size))
+                tracker['kl_weighted_loss'] = torch.cat((tracker['kl_weighted_loss'], kl_weighted_loss.data/batch_size))
+                tracker['kl_weight'] = torch.cat((tracker['kl_weight'], tensor([kl_weight])/batch_size))
+                tracker['kl_loss'] = torch.cat((tracker['kl_loss'], kl_loss.data/batch_size))
 
                 if args.tensorboard_logging:
                     writer.add_scalar("%s/Batch-Loss"%(split), loss.data[0], epoch * len(data_loader) + iteration)
@@ -222,13 +223,19 @@ def main(args):
 
                 if iteration % args.print_every == 0 or iteration+1 == len(data_loader):
                     print("%s Batch %04d/%i, Loss %9.4f, NLL Loss %9.4f, KL Loss %9.4f, KLW Loss %9.4f, w %6.4f"
-                        %(split.upper(), iteration, len(data_loader), loss.data[0], nll_loss.data[0], kl_loss.data[0], kl_weighted_loss.data[0], kl_weight))
+                        %(split.upper(), iteration, len(data_loader),
+                        loss.data[0]/batch_size,  nll_loss.data[0]/batch_size, kl_loss.data[0]/batch_size,
+                        kl_weighted_loss.data[0]/batch_size, kl_weight/batch_size))
 
                     prompts, replies = inference(model, datasets['train'])
                     save_dial_to_json(prompts, replies, root="dials/"+str(ts)+"/", comment="E"+str(epoch) + "I"+str(iteration))
 
             print("%s Epoch %02d/%i, Mean Loss: %.4f"%(split.upper(), epoch, args.epochs, torch.mean(tracker['loss'])))
-
+            if args.tensorboard_logging:
+                writer.add_scalar("%s/Epoch-Loss"%(split), torch.mean(tracker['loss']), epoch)
+                writer.add_scalar("%s/Epoch-NLL-Loss"%(split), torch.mean(tracker['nll_loss']), epoch)
+                writer.add_scalar("%s/Epoch-KL-Loss"%(split), torch.mean(tracker['kl_loss']), epoch)
+                
             # TODO: save model
 
 
