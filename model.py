@@ -177,15 +177,16 @@ class Decoder(nn.Module):
 
         batch_size = hx.size(0)
 
+        tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.Tensor
+
         # required for dynamic stopping of reply generation
-        sequence_idx = torch.arange(0, batch_size).long().cuda() if torch.cuda.is_available() else torch.arange(0, batch_size).long() # all idx of batch
-        sequence_running = torch.arange(0, batch_size).long().cuda() if torch.cuda.is_available() else torch.arange(0, batch_size).long()# all idx of batch wich are still generating
-        sequence_mask = torch.ones(batch_size).byte().cuda() if torch.cuda.is_available() else torch.ones(batch_size).byte()
+        sequence_idx = torch.arange(0, batch_size, out=tensor()).long() # all idx of batch
+        sequence_running = torch.arange(0, batch_size, out=tensor()).long() # all idx of batch wich are still generating
+        sequence_mask = torch.ones(batch_size, out=tensor()).byte()
 
-        running_seqs = torch.arange(0, batch_size).long().cuda() if torch.cuda.is_available() else torch.arange(0, batch_size).long() # idx of still generating sequences with respect to current loop
-        #running_mask = torch.ones(batch_size).byte()
+        running_seqs = torch.arange(0, batch_size, out=tensor()).long() # idx of still generating sequences with respect to current loop
 
-        replies = torch.Tensor(batch_size, self.max_utterance_length).fill_(self.pad_idx).long().cuda() if torch.cuda.is_available() else torch.Tensor(batch_size, self.max_utterance_length).fill_(self.pad_idx).long()
+        replies = tensor(batch_size, self.max_utterance_length).fill_(self.pad_idx).long()
 
         t = 0
         while(len(running_seqs) > 0 and t<self.max_utterance_length):
@@ -223,7 +224,7 @@ class Decoder(nn.Module):
                 input = input[running_seqs]
                 hidden = hidden[running_seqs]
 
-                running_seqs = torch.arange(0, len(running_seqs)).long().cuda() if torch.cuda.is_available() else torch.arange(0, len(running_seqs)).long()
+                running_seqs = torch.arange(0, len(running_seqs), out=tensor()).long()
 
             t += 1
 

@@ -2,10 +2,10 @@ import time
 import torch
 import argparse
 import numpy as np
-from collections import defaultdict
 from multiprocessing import cpu_count
 from tensorboardX import SummaryWriter
 from torch.utils.data import DataLoader
+from collections import OrderedDict, defaultdict
 from torch.nn.utils.rnn import pack_padded_sequence
 
 from model import DialLV
@@ -15,9 +15,11 @@ from GuessWhatDataset import GuessWhatDataset
 
 def main(args):
 
+    tensor = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor
+
     splits = ['train', 'valid']
 
-    datasets = dict()
+    datasets = OrderedDict()
     for split in splits:
         if args.dataset.lower() == 'opensubtitles':
             datasets[split] = OpenSubtitlesQADataset(
@@ -155,14 +157,11 @@ def main(args):
                 dataset=dataset,
                 batch_size=args.batch_size,
                 shuffle=split=='train',
-                #num_workers=cpu_count(),
-                num_workers=1,
+                num_workers=cpu_count(),
                 pin_memory=torch.cuda.is_available()
                 )
-            if torch.cuda.is_available():
-                tracker = defaultdict(torch.cuda.FloatTensor)
-            else:
-                tracker = defaultdict(torch.FloatTensor)
+
+            tracker = defaultdict(tensor)
 
             if split == 'train':
                 model.train()
@@ -211,10 +210,7 @@ def main(args):
                 tracker['loss'] = torch.cat((tracker['loss'], loss.data))
                 tracker['nll_loss'] = torch.cat((tracker['nll_loss'], nll_loss.data))
                 tracker['kl_weighted_loss'] = torch.cat((tracker['kl_weighted_loss'], kl_weighted_loss.data))
-                if torch.cuda.is_available():
-                    tracker['kl_weight'] = torch.cat((tracker['kl_weight'], torch.cuda.FloatTensor([kl_weight])))
-                else:
-                    tracker['kl_weight'] = torch.cat((tracker['kl_weight'], torch.Tensor([kl_weight])))
+                tracker['kl_weight'] = torch.cat((tracker['kl_weight'], tensor([kl_weight])))
                 tracker['kl_loss'] = torch.cat((tracker['kl_loss'], kl_loss.data))
 
                 if args.tensorboard_logging:
