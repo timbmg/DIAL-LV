@@ -246,7 +246,7 @@ def main(args):
 
                     prompts, replies = inference(model, datasets['train'])
                     save_dial_to_json(prompts, replies, root="dials/"+str(ts)+"/", comment="E"+str(epoch) + "I"+str(iteration))
-                    break
+                    
 
             print("%s Epoch %02d/%i, Mean Loss: %.4f"%(split.upper(), epoch, args.epochs, torch.mean(tracker['loss'])))
             if args.tensorboard_logging:
@@ -267,7 +267,7 @@ if __name__ == '__main__':
     parser.add_argument("--data_path",              type=str, default="data")
     parser.add_argument("--dataset",                type=str, default="opensubtitles")
     parser.add_argument("--create_data",            action='store_true')
-    parser.add_argument("--num_workers",            type=int, default=64,           help="Number of threads for dataloading. Cealed by number of cores.")
+    parser.add_argument("--num_workers",            type=int, default=16,           help="Number of threads for dataloading. Cealed by number of cores.")
     parser.add_argument("--min_occ",                type=int, default=3)
     parser.add_argument("--max_input_length",       type=int, default=30)
     parser.add_argument("--max_reply_length",       type=int, default=15)
