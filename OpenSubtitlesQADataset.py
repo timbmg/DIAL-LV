@@ -150,9 +150,9 @@ class OpenSubtitlesQADataset(Dataset):
                     if i > 1000000:
                         break
 
-        self._load_preprocessed_data()
+        self._load_preprocessed_data(vocab=False)
 
-    def _load_preprocessed_data(self):
+    def _load_preprocessed_data(self, vocab=True):
         """Load (if exists) preprocessed dataset. If not, new one will be created."""
 
         if not os.path.exists(self.preprocessed_file_path):
@@ -160,8 +160,16 @@ class OpenSubtitlesQADataset(Dataset):
             self._create_preporcessed_data()
 
         else:
-            self.dataset = h5py.File(self.preprocessed_file_path, 'r')
-            self._load_vocab() # TODO move this outside of create data loop
+            self.dataset = dict()
+            with h5py.File(self.preprocessed_file_path, 'r') as file:
+                self.dataset['question'] = np.asarray(file['question'])
+                self.dataset['question_length'] = np.asarray(file['question_length'])
+                self.dataset['answer_input'] = np.asarray(file['answer_input'])
+                self.dataset['answer_target'] = np.asarray(file['answer_target'])
+                self.dataset['answer_length'] = np.asarray(file['answer_length'])
+
+            if vocab:
+                self._load_vocab()
 
         print("%s dataset with %i points loaded."%(self.split.upper(), len(self.dataset['question'])))
 
