@@ -91,15 +91,15 @@ def experiment_name(args):
     exp_name = str()
 
     exp_name += "BS=%i_"%args.batch_size
-    exp_name += "LR=%f_"%args.learning_rate
+    exp_name += "LR={}_".format(args.learning_rate)
     exp_name += "KLA=%i_"%(1 if args.kl_anneal else 0)
     if args.kl_anneal:
-        exp_name += "KLk=%f_"%args.kla_k
-        exp_name += "KLx0=%f_"%args.kla_x0
+        exp_name += "KLk={}_".format(args.kla_k)
+        exp_name += "KLx0=%i_"%args.kla_x0
     exp_name += "bi=%i_"%(1 if args.bidirectional_encoder else 0)
     exp_name += "EMB=%i_"%args.embedding_size
     exp_name += "HID=%i_"%args.hidden_size
     exp_name += "Z=%i_"%args.latent_size
-    exp_name += "WD=%f"%args.word_dropout
+    exp_name += "WD={}".format(args.word_dropout)
 
     return exp_name
