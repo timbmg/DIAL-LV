@@ -68,7 +68,7 @@ def save_dial_to_json(prompts, replies, comment, root):
 
     """
 
-    dialogues = defaultdict(dict)
+    dialogues = defaultdict(OrderedDict)
 
     prompts = prompts.split("\n")
     for pi, prompt in enumerate(prompts):
