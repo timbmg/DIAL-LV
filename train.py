@@ -46,7 +46,8 @@ def main(args):
                     pad_idx=datasets['train'].pad_idx,
                     sos_idx=datasets['train'].sos_idx,
                     eos_idx=datasets['train'].eos_idx,
-                    max_utterance_length=args.max_reply_length
+                    max_utterance_length=args.max_reply_length,
+                    bidirectional=args.bidirectional_encoder
                     )
 
     if torch.cuda.is_available():
@@ -247,7 +248,7 @@ if __name__ == '__main__':
     parser.add_argument("--dataset", type=str, default="OpenSubtitles")
     parser.add_argument("--create_data", action='store_true')
     parser.add_argument("--min_occ", type=int, default=3)
-    parser.add_argument("--max_input_length", type=int, default=100)
+    parser.add_argument("--max_input_length", type=int, default=30)
     parser.add_argument("--max_reply_length", type=int, default=15)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--learning_rate", type=float, default=0.0005)
@@ -260,6 +261,7 @@ if __name__ == '__main__':
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--print_every", type=int, default=100)
     parser.add_argument("--tensorboard_logging", action='store_true')
+    parser.add_argument("--bidirectional_encoder", action='store_true')
 
     args = parser.parse_args()
 

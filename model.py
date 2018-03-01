@@ -6,7 +6,7 @@ from utils import to_var
 class DialLV(nn.Module):
 
     def __init__(self, vocab_size, embedding_size, hidden_size, latent_size, word_dropout, pad_idx,
-                sos_idx, eos_idx, max_utterance_length):
+                sos_idx, eos_idx, max_utterance_length, bidirectional):
 
         super(DialLV, self).__init__()
 
@@ -14,8 +14,8 @@ class DialLV(nn.Module):
 
         self.encoder_embedding = nn.Embedding(vocab_size, embedding_size)
 
-        self.prompt_encoder = Encoder(self.encoder_embedding, embedding_size, hidden_size)
-        self.reply_encoder = Encoder(self.encoder_embedding, embedding_size, hidden_size)
+        self.prompt_encoder = Encoder(self.encoder_embedding, embedding_size, hidden_size, bidirectional=bidirectional)
+        self.reply_encoder = Encoder(self.encoder_embedding, embedding_size, hidden_size, bidirectional=bidirectional)
 
         self.linear_mean = nn.Linear(hidden_size*2, latent_size)
         self.linear_log_var = nn.Linear(hidden_size*2, latent_size)
@@ -76,11 +76,16 @@ class Encoder(nn.Module):
 
         super(Encoder, self).__init__()
 
+        self.bidirectional = bidirectional
+
         self.encoder_embedding = shared_embedding
 
-        self.RNN = nn.GRU(embedding_size, hidden_size, batch_first=True, bidirectional=bidirectional)
+        self.RNN = nn.GRU(embedding_size, hidden_size, batch_first=True, bidirectional=self.bidirectional)
 
-        self.linear = nn.Linear(hidden_size*2, hidden_size) # not clear from paper what the out dimensionaltiy is here
+        if self.bidirectional:
+            self.linear = nn.Linear(hidden_size*2, hidden_size)
+        else:
+            self.linear = nn.Linear(hidden_size, hidden_size)
 
     def forward(self, input_sequence, input_length):
 
@@ -101,8 +106,11 @@ class Encoder(nn.Module):
         _, reverse_idx = idx.sort()
         last_encoder_hidden = last_encoder_hidden[:,reverse_idx.data]
 
-        # concat the states from bidirectioal
-        last_encoder_hidden = torch.cat((last_encoder_hidden[0], last_encoder_hidden[1]), dim=-1)
+        if self.bidirectional:
+            # concat the states from bidirectional
+            last_encoder_hidden = torch.cat((last_encoder_hidden[0], last_encoder_hidden[1]), dim=-1)
+        else:
+            last_encoder_hidden = last_encoder_hidden.squeeze(0)
 
         # transform and activate
         out = nn.functional.tanh(self.linear(last_encoder_hidden))
