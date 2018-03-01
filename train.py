@@ -58,11 +58,16 @@ def main(args):
 
     NLL = torch.nn.NLLLoss(size_average=False)
 
-    def kl_anneal_function(k, x0, x):
+    def kl_anneal_function(kl_anneal, k, x0, x):
         """ Returns the weight of for calcualting the weighted KL Divergence.
         https://en.wikipedia.org/wiki/Logistic_function
         """
-        return float(1/(1+np.exp(-k*(x-x0))))
+        if kl_anneal:
+            return float(1/(1+np.exp(-k*(x-x0))))
+
+        else:
+            # Disable KL Annealing
+            return 1
 
     def loss_fn(predictions, targets, mean, log_var, k, x0, x):
         """Calcultes the ELBO, consiting of the Negative Log Likelihood and KL Divergence.
@@ -78,9 +83,9 @@ def main(args):
             Predicted mean values of latent variables.
         log_var : Variable(torch.FloatTensor) [batch_size x latent_size]
             Predicted log variabnce values of latent variables.
-        k : type
+        k : float
             Steepness parameter for kl weight calculation.
-        x0 : type
+        x0 : int
             Midpoint parameter for kl weight calculation.
         x : int
             Global step.
@@ -96,7 +101,7 @@ def main(args):
 
         kl_loss = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp())
 
-        kl_weight = kl_anneal_function(k, x0, x)
+        kl_weight = kl_anneal_function(args.kl_anneal, k, x0, x)
 
         kl_weighted = kl_weight * kl_loss
 
@@ -199,7 +204,7 @@ def main(args):
                 targets = pack_padded_sequence(targets, sorted_length.data.tolist(), batch_first=True)[0]
 
                 # compute the loss
-                nll_loss, kl_weighted_loss, kl_weight, kl_loss = loss_fn(predictions, targets, mean, log_var, args.kl_anneal_k, args.kl_anneal_x0, global_step)
+                nll_loss, kl_weighted_loss, kl_weight, kl_loss = loss_fn(predictions, targets, mean, log_var, args.kla_k, args.kla_x0, global_step)
                 loss = nll_loss + kl_weighted_loss
 
                 if split == 'train':
@@ -244,25 +249,33 @@ def main(args):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_path", type=str, default="data")
-    parser.add_argument("--dataset", type=str, default="OpenSubtitles")
-    parser.add_argument("--create_data", action='store_true')
-    parser.add_argument("--min_occ", type=int, default=3)
-    parser.add_argument("--max_input_length", type=int, default=30)
-    parser.add_argument("--max_reply_length", type=int, default=15)
-    parser.add_argument("--batch_size", type=int, default=32)
-    parser.add_argument("--learning_rate", type=float, default=0.0005)
-    parser.add_argument("--embedding_size", type=int, default=300)
-    parser.add_argument("--hidden_size", type=int, default=512)
-    parser.add_argument("--latent_size", type=int, default=64)
-    parser.add_argument("--word_dropout", type=float, default=0.5)
-    parser.add_argument("--kl_anneal_k", type=float, default=0.00025, help="Steepness of Annealing function")
-    parser.add_argument("--kl_anneal_x0", type=int, default=15000, help="Midpoint of Annealing function (i.e. weight=0.5)")
-    parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--print_every", type=int, default=100)
-    parser.add_argument("--tensorboard_logging", action='store_true')
-    parser.add_argument("--bidirectional_encoder", action='store_true')
+    parser.add_argument("--data_path",              type=str, default="data")
+    parser.add_argument("--dataset",                type=str, default="opensubtitles")
+    parser.add_argument("--create_data",            action='store_true')
+    parser.add_argument("--num_workers",            type=int, default=64,           help="Number of threads for dataloading. Cealed by number of cores.")
+    parser.add_argument("--min_occ",                type=int, default=3)
+    parser.add_argument("--max_input_length",       type=int, default=30)
+    parser.add_argument("--max_reply_length",       type=int, default=15)
+
+    parser.add_argument("--epochs",                 type=int, default=50)
+    parser.add_argument("--batch_size",             type=int, default=32)
+    parser.add_argument("--learning_rate",          type=float, default=0.0005)
+    parser.add_argument("--kl_anneal",              action='store_true',            help="Enable/Disable KL Annealing.")
+    parser.add_argument("--kla_k",                  type=float, default=0.00025,    help="Steepness of Annealing function")
+    parser.add_argument("--kla_x0",                 type=int, default=15000,        help="Midpoint of Annealing function (i.e. weight=0.5)")
+
+    parser.add_argument("--embedding_size",         type=int, default=300)
+    parser.add_argument("--bidirectional_encoder",  action='store_true')
+    parser.add_argument("--hidden_size",            type=int, default=512)
+    parser.add_argument("--latent_size",            type=int, default=64)
+    parser.add_argument("--word_dropout",           type=float, default=0.5,        help="Word Dropout in the Decoder during training. Enter 0 to disable.")
+
+    parser.add_argument("--print_every",            type=int, default=100)
+    parser.add_argument("--tensorboard_logging",    action='store_true')
+
 
     args = parser.parse_args()
+
+    args.num_workers = min(cpu_count(), args.num_workers)
 
     main(args)
