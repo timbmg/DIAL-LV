@@ -66,18 +66,23 @@ def main(args):
 
     NLL = torch.nn.NLLLoss(size_average=False)
 
-    def kl_anneal_function(kl_anneal, k, x0, x):
-        """ Returns the weight of for calcualting the weighted KL Divergence.
-        https://en.wikipedia.org/wiki/Logistic_function
-        """
-        if kl_anneal:
-            return float(1/(1+np.exp(-k*(x-x0))))
+    def kl_anneal_function(**kwargs):
+        """ Returns the weight of for calcualting the weighted KL Divergence."""
+
+        if kwargs['kl_anneal'] == 'logistic':
+            """ https://en.wikipedia.org/wiki/Logistic_function """
+            assert ('k' in kwargs and 'x0' in kwargs and 'global_step' in kwargs)
+            return float(1/(1+np.exp(-kwargs['k']*(kwargs['global_step']-kwargs['x0']))))
+
+        elif kwargs['kl_anneal'] == 'step':
+            assert ('epoch' in kwargs and 'denom' in kwargs)
+            return kwargs['epoch'] / kwargs['denom']
 
         else:
             # Disable KL Annealing
             return 1
 
-    def loss_fn(predictions, targets, mean, log_var, k, x0, x):
+    def loss_fn(predictions, targets, mean, log_var, **kl_args):
         """Calcultes the ELBO, consiting of the Negative Log Likelihood and KL Divergence.
 
         Parameters
@@ -109,7 +114,7 @@ def main(args):
 
         kl_loss = -0.5 * torch.sum(1 + log_var - mean.pow(2) - log_var.exp())
 
-        kl_weight = kl_anneal_function(args.kl_anneal, k, x0, x)
+        kl_weight = kl_anneal_function(**kl_args)
 
         kl_weighted = kl_weight * kl_loss
 
@@ -218,7 +223,11 @@ def main(args):
                 targets = pack_padded_sequence(targets, sorted_length.data.tolist(), batch_first=True)[0]
 
                 # compute the loss
-                nll_loss, kl_weighted_loss, kl_weight, kl_loss = loss_fn(predictions, targets, mean, log_var, args.kla_k, args.kla_x0, global_step)
+                nll_loss, kl_weighted_loss, kl_weight, kl_loss = loss_fn(
+                    predictions, targets, mean, log_var, kl_anneal=args.kl_anneal,
+                    global_step=global_step, epoch=epoch, k=args.kla_k, x0=args.kla_x0,
+                    denom=args.kla_denom
+                    )
                 loss = nll_loss + kl_weighted_loss
 
                 if split == 'train':
@@ -247,11 +256,12 @@ def main(args):
                         %(split.upper(), iteration, len(data_loader),
                         tracker['loss'][-1], tracker['nll_loss'][-1], tracker['kl_loss'][-1],
                         tracker['kl_weighted_loss'][-1], tracker['kl_weight'][-1], time.time()-t1))
+                    break
 
                     t1 = time.time()
 
-                    prompts, replies = inference(model, datasets['train'])
-                    save_dial_to_json(prompts, replies, root="dials/"+str(ts)+"/", comment="E"+str(epoch) + "I"+str(iteration))
+                    prompts, replies = inference(model, datasets[split])
+                    save_dial_to_json(prompts, replies, root="dials/"+str(ts)+"/", comment="%s_E%i_I%i"%(split.lower(), epoch, iteration))
 
 
             print("%s Epoch %02d/%i, Mean Loss: %.4f"%(split.upper(), epoch, args.epochs, torch.mean(tracker['loss'])))
@@ -282,9 +292,10 @@ if __name__ == '__main__':
     parser.add_argument("--epochs",                 type=int, default=50)
     parser.add_argument("--batch_size",             type=int, default=32)
     parser.add_argument("--learning_rate",          type=float, default=0.0005)
-    parser.add_argument("--kl_anneal",              action='store_true',            help="Enable/Disable KL Annealing.")
-    parser.add_argument("--kla_k",                  type=float, default=0.00025,    help="Steepness of Annealing function")
-    parser.add_argument("--kla_x0",                 type=int, default=15000,        help="Midpoint of Annealing function (i.e. weight=0.5)")
+    parser.add_argument("--kl_anneal",              type=str, default='',           help="KL Annealing function, select 'logistic' or 'step'.")
+    parser.add_argument("--kla_denom",              type=int, default=10,           help="For 'step' KL Annealing: Epoch denominator.")
+    parser.add_argument("--kla_k",                  type=float, default=0.00025,    help="For 'logistic' KL Annealing: Steepness of Annealing function")
+    parser.add_argument("--kla_x0",                 type=int, default=15000,        help="For 'logistic' KL Annealing: Midpoint of Annealing function (i.e. weight=0.5)")
 
     parser.add_argument("--embedding_size",         type=int, default=300)
     parser.add_argument("--bidirectional_encoder",  action='store_true')
@@ -299,6 +310,8 @@ if __name__ == '__main__':
     parser.add_argument("--load_checkpoint",             type=str, default='')
 
     args = parser.parse_args()
+
+    assert args.kl_anneal in ['logistic', 'step']
 
     args.num_workers = min(cpu_count(), args.num_workers)
 
