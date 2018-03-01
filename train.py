@@ -10,7 +10,7 @@ from collections import OrderedDict, defaultdict
 from torch.nn.utils.rnn import pack_padded_sequence
 
 from model import DialLV
-from utils import to_var, idx2word, save_dial_to_json
+from utils import to_var, idx2word, save_dial_to_json, experiment_name
 from OpenSubtitlesQADataset import OpenSubtitlesQADataset
 from GuessWhatDataset import GuessWhatDataset
 
@@ -158,9 +158,12 @@ def main(args):
 
     ts = time.time()
     if args.tensorboard_logging:
-        writer = SummaryWriter("logs/"+str(ts))
+        writer = SummaryWriter("logs/"+experiment_name(args))
         writer.add_text("model", str(model))
         writer.add_text("args", str(args))
+        writer.add_text("ts", str(ts))
+        if args.load_checkpoint != '':
+            writer.add_text("Loaded From", args.load_checkpoint)
     save_model_path = os.path.join(args.save_model_path, str(ts))
     os.makedirs(save_model_path)
 
@@ -185,6 +188,7 @@ def main(args):
                 # disable drop out when in validation
                 model.eval()
 
+            t1 = time.time()
             for iteration, batch in enumerate(data_loader):
 
                 # get batch items and wrap them in variables
@@ -239,14 +243,16 @@ def main(args):
                     writer.add_scalar("%s/Batch-KL-Loss-Weighted"%(split),  tracker['kl_weighted_loss'][-1],    step)
 
                 if iteration % args.print_every == 0 or iteration+1 == len(data_loader):
-                    print("%s Batch %04d/%i, Loss %9.4f, NLL Loss %9.4f, KL Loss %9.4f, KLW Loss %9.4f, w %6.4f"
+                    print("%s Batch %04d/%i, Loss %9.4f, NLL Loss %9.4f, KL Loss %9.4f, KLW Loss %9.4f, w %6.4f, tt %6.2f"
                         %(split.upper(), iteration, len(data_loader),
                         tracker['loss'][-1], tracker['nll_loss'][-1], tracker['kl_loss'][-1],
-                        tracker['kl_weighted_loss'][-1], tracker['kl_weight'][-1]))
+                        tracker['kl_weighted_loss'][-1], tracker['kl_weight'][-1], time.time()-t1))
+
+                    t1 = time.time()
 
                     prompts, replies = inference(model, datasets['train'])
                     save_dial_to_json(prompts, replies, root="dials/"+str(ts)+"/", comment="E"+str(epoch) + "I"+str(iteration))
-                    
+
 
             print("%s Epoch %02d/%i, Mean Loss: %.4f"%(split.upper(), epoch, args.epochs, torch.mean(tracker['loss'])))
             if args.tensorboard_logging:
@@ -255,9 +261,10 @@ def main(args):
                 writer.add_scalar("%s/Epoch-KL-Loss"%(split),   torch.mean(tracker['kl_loss']),     epoch)
 
             # save checkpoint
-            checkpoint_path = os.path.join(save_model_path, "E%i.pytorch"%(epoch))
-            torch.save(model.state_dict(), checkpoint_path)
-            print("Model saved at %s"%checkpoint_path)
+            if split == 'train':
+                checkpoint_path = os.path.join(save_model_path, "E%i.pytorch"%(epoch))
+                torch.save(model.state_dict(), checkpoint_path)
+                print("Model saved at %s"%checkpoint_path)
 
 
 

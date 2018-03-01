@@ -85,3 +85,21 @@ def save_dial_to_json(prompts, replies, comment, root):
     with io.open(file_path, 'wb') as out:
         data = json.dumps(dialogues, ensure_ascii=False)
         out.write(data.encode('utf8', 'replace'))
+
+def experiment_name(args):
+
+    exp_name = str()
+
+    exp_name += "BS=%i_"%args.batch_size
+    exp_name += "LR=%f_"%args.learning_rate
+    exp_name += "KLA=%i_"%(1 if args.kl_anneal else 0)
+    if args.kl_anneal:
+        exp_name += "KLk=%f_"%args.kl_anneal_k
+        exp_name += "KLx0=%f_"%args.kl_anneal_x0
+    exp_name += "bi=%i_"%(1 if args.bidirectional_encoder else 0)
+    exp_name += "EMB=%i_"%args.embedding_size
+    exp_name += "HID=%i_"%args.hidden_size
+    exp_name += "Z=%i_"%args.latent_size
+    exp_name += "WD=%f_"%args.word_dropout
+    
+    return exp_name
