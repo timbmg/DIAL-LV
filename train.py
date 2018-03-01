@@ -1,3 +1,4 @@
+import os
 import time
 import torch
 import argparse
@@ -49,6 +50,13 @@ def main(args):
                     max_utterance_length=args.max_reply_length,
                     bidirectional=args.bidirectional_encoder
                     )
+
+    if args.load_checkpoint != '':
+        if not os.path.exists(args.load_checkpoint):
+            raise FileNotFoundError(args.load_checkpoint)
+
+        model.load_state_dict(torch.load(args.load_checkpoint))
+        print("Model loaded from %s"%(args.load_checkpoint))
 
     if torch.cuda.is_available():
         model = model.cuda()
@@ -153,6 +161,8 @@ def main(args):
         writer = SummaryWriter("logs/"+str(ts))
         writer.add_text("model", str(model))
         writer.add_text("args", str(args))
+    save_model_path = os.path.join(args.save_model_path, str(ts))
+    os.makedirs(save_model_path)
 
     global_step = 0
     for epoch in range(args.epochs):
@@ -236,6 +246,7 @@ def main(args):
 
                     prompts, replies = inference(model, datasets['train'])
                     save_dial_to_json(prompts, replies, root="dials/"+str(ts)+"/", comment="E"+str(epoch) + "I"+str(iteration))
+                    break
 
             print("%s Epoch %02d/%i, Mean Loss: %.4f"%(split.upper(), epoch, args.epochs, torch.mean(tracker['loss'])))
             if args.tensorboard_logging:
@@ -243,7 +254,11 @@ def main(args):
                 writer.add_scalar("%s/Epoch-NLL-Loss"%(split),  torch.mean(tracker['nll_loss']),    epoch)
                 writer.add_scalar("%s/Epoch-KL-Loss"%(split),   torch.mean(tracker['kl_loss']),     epoch)
 
-            # TODO: save model
+            # save checkpoint
+            checkpoint_path = os.path.join(save_model_path, "E%i.pytorch"%(epoch))
+            torch.save(model.state_dict(), checkpoint_path)
+            print("Model saved at %s"%checkpoint_path)
+
 
 
 if __name__ == '__main__':
@@ -270,9 +285,11 @@ if __name__ == '__main__':
     parser.add_argument("--latent_size",            type=int, default=64)
     parser.add_argument("--word_dropout",           type=float, default=0.5,        help="Word Dropout in the Decoder during training. Enter 0 to disable.")
 
+    parser.add_argument("--save_model_path",        type=str, default='bin')
     parser.add_argument("--print_every",            type=int, default=100)
     parser.add_argument("--tensorboard_logging",    action='store_true')
 
+    parser.add_argument("--load_checkpoint",             type=str, default='')
 
     args = parser.parse_args()
 
