@@ -120,7 +120,7 @@ def main(args):
 
         return nll_loss, kl_weighted, kl_weight, kl_loss
 
-    def inference(model, train_dataset, n=10, m=3):
+    def inference(model, train_dataset, split, n=10, m=3):
         """ Executes the model in inference mode and returns string of inputs and corresponding
         generations.
 
@@ -128,8 +128,10 @@ def main(args):
         ----------
         model : DIAL-LV
             The DIAL-LV model.
-        train_dataset : type
+        train_dataset : Dataset
             Training dataset to draw random input samples from.
+        split : str
+            'train', 'valid' or 'test', to enable/disable word_dropout.
         n : int
             Number of samples to draw.
         m : int
@@ -155,9 +157,14 @@ def main(args):
         prompts = idx2word(input_sequence.data, train_dataset.i2w, train_dataset.pad_idx)
 
         replies = list()
+        if split == 'train':
+            model.eval()
         for i in range(m):
             replies_ = model.inference(input_sequence, input_length)
             replies.append(idx2word(replies_, train_dataset.i2w, train_dataset.pad_idx))
+
+        if split == 'train':
+            model.train()
 
         return prompts, replies
 
@@ -265,7 +272,7 @@ def main(args):
 
                     t1 = time.time()
 
-                    prompts, replies = inference(model, datasets[split])
+                    prompts, replies = inference(model, datasets[split], split)
                     save_dial_to_json(prompts, replies, root="dials/"+ts+"/", comment="%s_E%i_I%i"%(split.lower(), epoch, iteration))
 
 
@@ -302,7 +309,7 @@ if __name__ == '__main__':
     parser.add_argument("--kla_k",                  type=float, default=0.00025,    help="For 'logistic' KL Annealing: Steepness of Annealing function")
     parser.add_argument("--kla_x0",                 type=int, default=15000,        help="For 'logistic' KL Annealing: Midpoint of Annealing function (i.e. weight=0.5)")
 
-    parser.add_argument("--embedding_size",         type=int, default=300)
+    parser.add_argument("--embedding_size",         type=int, default=512)
     parser.add_argument("--bidirectional_encoder",  action='store_true')
     parser.add_argument("--hidden_size",            type=int, default=512)
     parser.add_argument("--latent_size",            type=int, default=64)
