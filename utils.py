@@ -86,7 +86,7 @@ def save_dial_to_json(prompts, replies, comment, root):
         data = json.dumps(dialogues, ensure_ascii=False)
         out.write(data.encode('utf8', 'replace'))
 
-def experiment_name(args):
+def experiment_name(args, ts):
 
     exp_name = str()
 
@@ -100,6 +100,8 @@ def experiment_name(args):
     exp_name += "EMB=%i_"%args.embedding_size
     exp_name += "HID=%i_"%args.hidden_size
     exp_name += "Z=%i_"%args.latent_size
-    exp_name += "WD={}".format(args.word_dropout)
+    exp_name += "WD={}_".format(args.word_dropout)
+
+    exp_name += "ts=%s"%ts
 
     return exp_name

@@ -161,15 +161,20 @@ def main(args):
 
         return prompts, replies
 
-    ts = time.time()
+    ts = time.strftime('%Y-%b-%d|%H:%M:%S', time.gmtime())
     if args.tensorboard_logging:
-        writer = SummaryWriter("logs/"+experiment_name(args))
+        log_path = os.path.join(args.tensorboard_logdir, experiment_name(args, ts))
+        while os.path.exists(log_path):
+            ts = time.strftime('%Y-%b-%d|%H:%M:%S', time.gmtime())
+            log_path = os.path.join(args.tensorboard_logdir, experiment_name(args, ts))
+
+        writer = SummaryWriter(log_path)
         writer.add_text("model", str(model))
         writer.add_text("args", str(args))
-        writer.add_text("ts", str(ts))
+        writer.add_text("ts", ts)
         if args.load_checkpoint != '':
             writer.add_text("Loaded From", args.load_checkpoint)
-    save_model_path = os.path.join(args.save_model_path, str(ts))
+    save_model_path = os.path.join(args.save_model_path, ts)
     os.makedirs(save_model_path)
 
     global_step = 0
@@ -256,12 +261,12 @@ def main(args):
                         %(split.upper(), iteration, len(data_loader),
                         tracker['loss'][-1], tracker['nll_loss'][-1], tracker['kl_loss'][-1],
                         tracker['kl_weighted_loss'][-1], tracker['kl_weight'][-1], time.time()-t1))
-                    break
+
 
                     t1 = time.time()
 
                     prompts, replies = inference(model, datasets[split])
-                    save_dial_to_json(prompts, replies, root="dials/"+str(ts)+"/", comment="%s_E%i_I%i"%(split.lower(), epoch, iteration))
+                    save_dial_to_json(prompts, replies, root="dials/"+ts+"/", comment="%s_E%i_I%i"%(split.lower(), epoch, iteration))
 
 
             print("%s Epoch %02d/%i, Mean Loss: %.4f"%(split.upper(), epoch, args.epochs, torch.mean(tracker['loss'])))
@@ -306,12 +311,13 @@ if __name__ == '__main__':
     parser.add_argument("--save_model_path",        type=str, default='bin')
     parser.add_argument("--print_every",            type=int, default=100)
     parser.add_argument("--tensorboard_logging",    action='store_true')
+    parser.add_argument("--tensorboard_logdir",     type=str, default='logs')
 
     parser.add_argument("--load_checkpoint",             type=str, default='')
 
     args = parser.parse_args()
 
-    assert args.kl_anneal in ['logistic', 'step']
+    assert args.kl_anneal in ['logistic', 'step', '']
 
     args.num_workers = min(cpu_count(), args.num_workers)
 
